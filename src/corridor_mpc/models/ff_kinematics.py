@@ -22,8 +22,8 @@ class FreeFlyerKinematics(object):
         # Model
         self.nonlinear_model = self.astrobee_dynamics
         self.model = None
-        self.n = 6
-        self.m = 6
+        self.n = 3
+        self.m = 3
 
         # Tracking
         self.total_trajectory_time = None
@@ -31,13 +31,13 @@ class FreeFlyerKinematics(object):
         # Control bounds
         self.max_v = 0.5
         self.max_w = 0.2
-        self.ulb = [-self.max_v, -self.max_v, -self.max_v, -self.max_w, -self.max_w, -self.max_w]
-        self.uub = [self.max_v, self.max_v, self.max_v, self.max_w, self.max_w, self.max_w]
+        self.ulb = [-self.max_v, -self.max_v, -self.max_w]
+        self.uub = [self.max_v, self.max_v, self.max_w]
 
         # Trajectory reference
         vx = self.max_v * 0.1
         wz = self.max_w * 0.1
-        self.constant_v_tracking = np.array([[vx, 0, 0, 0, 0, wz]]).T
+        self.constant_v_tracking = np.array([[vx, 0, wz]]).T
 
         self.set_casadi_options()
         self.set_system_constants()
@@ -103,14 +103,14 @@ class FreeFlyerKinematics(object):
         t = x[3:]
 
         # 3D Linear velocity
-        v = u[0:3]
+        v = u[0:2]
 
         # 3D Angular velocity
-        w = u[3:]
+        w = u[2:]
 
         # Model
         pdot = v
-        tdot = self.psi(t) @ w
+        tdot = w
 
         dxdt = [pdot, tdot]
 
@@ -241,12 +241,12 @@ class FreeFlyerKinematics(object):
 
         # Paper Translation barrier
         u = ca.MX.sym("u", self.n, 1)
-        u1 = u[0:3]
-        u2 = u[3:]
+        u1 = u[0:2]
+        u2 = u[2:]
 
         # Setup position barrier
-        p = ca.MX.sym("p", 3, 1)
-        pr = ca.MX.sym("pr", 3, 1)
+        p = ca.MX.sym("p", 2, 1)
+        pr = ca.MX.sym("pr", 2, 1)
 
         h1 = self.eps_p**2 - ca.norm_2(p - pr)**2
         h1_ineq = - 2 * (p - pr).T @ u1 + self.lambda_1 * h1 - self.rah_1
@@ -255,11 +255,11 @@ class FreeFlyerKinematics(object):
         self.h1_ineq = ca.Function('h1_ineq', [p, pr, u], [h1_ineq], self.fun_options)
 
         # Setup attitude barrier
-        t = ca.MX.sym("t", 3, 1)
-        tr = ca.MX.sym("tr", 3, 1)
+        t = ca.MX.sym("t", 1, 1)
+        tr = ca.MX.sym("tr", 1, 1)
 
         h2 = self.eps_t**2 - ca.norm_2(t - tr)**2
-        h2_ineq = - 2 * (t - tr).T @ self.psi(t) @ u2 + self.lambda_2 * h2 - self.rah_2
+        h2_ineq = - 2 * (t - tr).T @ u2 + self.lambda_2 * h2 - self.rah_2
 
         self.h2 = ca.Function('h2', [t, tr], [h2], self.fun_options)
         self.h2_ineq = ca.Function('h2_ineq', [t, tr, u], [h2_ineq], self.fun_options)
@@ -278,10 +278,10 @@ class FreeFlyerKinematics(object):
         :rtype: float
         """
 
-        p = x_t[0:3]
-        pr = x_r[0:3]
-        t = x_t[3:]
-        tr = x_r[3:]
+        p = x_t[0:2]
+        pr = x_r[0:2]
+        t = x_t[2:]
+        tr = x_r[2:]
         u = u_t
 
         # hp_ineq >= 0
@@ -304,11 +304,11 @@ class FreeFlyerKinematics(object):
         :rtype: float
         """
 
-        p = x_t[0:3]
-        t = x_t[3:]
+        p = x_t[0:2]
+        t = x_t[2:]
 
-        pr = x_r[0:3]
-        tr = x_r[3:]
+        pr = x_r[0:2]
+        tr = x_r[2:]
 
         #    self.hp(p, pr, v, vr) - self.eps_p - self.eps_v
         e1 = self.eps_p**2 - ca.norm_2(p - pr)**2

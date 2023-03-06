@@ -8,8 +8,8 @@ from corridor_mpc.simulation_trajectory import EmbeddedSimEnvironment
 # Sim and MPC Params
 SIM_TIME = 15.0
 # SIM_TIME = 0.1
-Q = np.diag([100, 100, 100, 50, 50, 50])
-R = np.diag([50, 50, 50, 30, 30, 30])
+Q = np.diag([100, 100, 50])
+R = np.diag([50, 50, 30])
 P = Q * 100
 
 # Instantiante Model
@@ -26,7 +26,7 @@ ctl = CorridorMPC(model=abee,
                   set_zcbf=True)
 
 # Sinusoidal Trajectory
-xr0 = np.zeros((6, 1))
+xr0 = np.zeros((3, 1))
 abee.set_trajectory(length=SIM_TIME, start=xr0)
 sim_env_full = EmbeddedSimEnvironment(model=abee,
                                       dynamics=abee.model,
@@ -35,6 +35,6 @@ sim_env_full = EmbeddedSimEnvironment(model=abee,
                                       time=SIM_TIME, collect=True,
                                       animate=False)
 sim_env_full.use_trajectory_control(True)
-_, _, _, avg_ct = sim_env_full.run([1.32, 0, 0, 0, 0.4, 0])
+_, _, _, avg_ct = sim_env_full.run([1.32, 0.2, 0])
 
 print("Average computational cost:", avg_ct)

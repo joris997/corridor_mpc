@@ -64,7 +64,7 @@ class EmbeddedSimEnvironment(object):
         t = np.array([0])
         y_vec = x_init
         ref_vec = np.empty((x_init.shape[0], 0))
-        u_vec = np.array([[0, 0, 0, 0, 0, 0]]).T
+        u_vec = np.array([[0, 0, 0]]).T
         slv_time = np.empty((0, 1))
         h1_h2_vec = np.empty((2, 0))
         h1_h2_e_vec = np.empty((2, 0))
@@ -82,7 +82,7 @@ class EmbeddedSimEnvironment(object):
             u, ref, pred_x, pred_ref = self.corridor_mpc.solve(x, i * self.dt)
 
             # Convert data to numpy array and collect barrier values
-            u = np.asarray(u).reshape(6, 1)
+            u = np.asarray(u).reshape(3, 1)
 
             hp_c, hq_c = self.model.get_barrier_value(x.reshape(self.Nx, 1),
                                                       ref.reshape(self.Nx, 1),
@@ -144,10 +144,10 @@ class EmbeddedSimEnvironment(object):
         if self.noise is not None:
             w_p = np.random.uniform(-self.noise["pos"] / 2.0,
                                     self.noise["pos"] / 2.0,
-                                    (3, 1)) * self.dt
+                                    (2, 1)) * self.dt
             w_t = np.random.uniform(-self.noise["att"] / 2.0,
                                     self.noise["att"] / 2.0,
-                                    (3, 1)) * self.dt
+                                    (1, 1)) * self.dt
             noise_vec = np.concatenate((w_p, w_t), axis=0)
         else:
             noise_vec = np.zeros((self.Nx, 1))
@@ -214,33 +214,27 @@ class EmbeddedSimEnvironment(object):
         self.ax1.clear()
         self.ax1.set_title("Astrobee Testing")
         self.ax1.plot(t[l_wnd:-1], y_vec[0, l_wnd:-1] - ref_vec[0, l_wnd:-1],
-                      t[l_wnd:-1], y_vec[1, l_wnd:-1] - ref_vec[1, l_wnd:-1],
-                      t[l_wnd:-1], y_vec[2, l_wnd:-1] - ref_vec[2, l_wnd:-1])
-        self.ax1.legend(["x", "y", "z"])
+                      t[l_wnd:-1], y_vec[1, l_wnd:-1] - ref_vec[1, l_wnd:-1])
+        self.ax1.legend(["x", "y"])
         self.ax1.set_ylabel("Error [m]")
         self.ax1.grid()
 
         self.ax2.clear()
-        self.ax2.plot(t[l_wnd:-1], y_vec[3, l_wnd:-1] - ref_vec[3, l_wnd:-1],
-                      t[l_wnd:-1], y_vec[4, l_wnd:-1] - ref_vec[4, l_wnd:-1],
-                      t[l_wnd:-1], y_vec[5, l_wnd:-1] - ref_vec[5, l_wnd:-1])
-        self.ax2.legend(["x", "y", "z"])
+        self.ax2.plot(t[l_wnd:-1], y_vec[3, l_wnd:-1] - ref_vec[3, l_wnd:-1])
+        self.ax2.legend(["z"])
         self.ax2.set_ylabel("Attitude Error [rad]")
         self.ax2.grid()
 
         # Plot controls
         self.ax3.clear()
         self.ax3.plot(t[l_wnd:-1], u_vec[0, l_wnd:-1],
-                      t[l_wnd:-1], u_vec[1, l_wnd:-1],
-                      t[l_wnd:-1], u_vec[2, l_wnd:-1])
+                      t[l_wnd:-1], u_vec[1, l_wnd:-1])
         self.ax3.set_xlabel("Time [s]")
         self.ax3.set_ylabel("U1 [m/s]")
         self.ax3.grid()
 
         self.ax4.clear()
-        self.ax4.plot(t[l_wnd:-1], u_vec[3, l_wnd:-1],
-                      t[l_wnd:-1], u_vec[4, l_wnd:-1],
-                      t[l_wnd:-1], u_vec[5, l_wnd:-1])
+        self.ax4.plot(t[l_wnd:-1], u_vec[3, l_wnd:-1])
         self.ax4.set_xlabel("Time [s]")
         self.ax4.set_ylabel("U2 [rad/s]")
         self.ax4.set_ylim(-0.06, 0.06)
@@ -280,7 +274,7 @@ class EmbeddedSimEnvironment(object):
         eps_t = self.model.eps_t
 
         max_v = self.model.uub[0]  # maximum velocity allowed (same on all axis)
-        max_w = self.model.uub[3]  # maximum angular velocity allowed (Same on all axis)
+        max_w = self.model.uub[2]  # maximum angular velocity allowed (Same on all axis)
 
         # ---------------------------------------------------
         #      Third Figure with Compact Representation
@@ -301,7 +295,7 @@ class EmbeddedSimEnvironment(object):
 
         # Position error
         ax1.clear()
-        ax1.plot(t, np.linalg.norm(y_vec[0:3, :] - ref_vec[0:3, :], axis=0))
+        ax1.plot(t, np.linalg.norm(y_vec[0:2, :] - ref_vec[0:2, :], axis=0))
         ax1.plot(t, np.ones((y_vec.shape[1],)) * (eps_p),
                  t, np.zeros((y_vec.shape[1],)),
                  color='k', linestyle='--')
@@ -313,7 +307,7 @@ class EmbeddedSimEnvironment(object):
 
         # Attitude error
         ax2.clear()
-        ax2.plot(t, np.linalg.norm(y_vec[3:6, :] - ref_vec[3:6, :], axis=0))  # ,
+        ax2.plot(t, np.linalg.norm(y_vec[2:3, :] - ref_vec[2:3, :], axis=0))  # ,
         #         t, y_vec[4, :] - ref_vec[4, :],
         #         t, y_vec[5, :] - ref_vec[5, :])
         ax2.plot(t, np.ones((y_vec.shape[1],)) * (eps_t),
@@ -346,29 +340,26 @@ class EmbeddedSimEnvironment(object):
         # Plot linear velocity inputs
         ax5.clear()
         ax5.plot(t, u_vec[0, :],
-                 t, u_vec[1, :],
-                 t, u_vec[2, :])
+                 t, u_vec[1, :])
         ax5.plot(t, np.ones((u_vec.shape[1],)) * max_v,
                  t, -np.ones((u_vec.shape[1],)) * max_v,
                  color='k', linestyle='--')
         ax5.set_ylabel("{Linear Velocity - $u_1$ [m/s]}")
-        ax5.legend(["X", "Y", "Z"])
+        ax5.legend(["X", "Y"])
         ax5.set_ylim(-max_v * 1.3, max_v * 1.3)
         ax5.set_xlabel("Time [s]")
         ax5.grid()
 
         # Plot angular velocity input
         ax6.clear()
-        ax6.plot(t, u_vec[3, :],
-                 t, u_vec[4, :],
-                 t, u_vec[5, :])
+        ax6.plot(t, u_vec[2, :])
         ax6.plot(t, np.ones((u_vec.shape[1],)) * max_w,
                  t, -np.ones((u_vec.shape[1],)) * max_w,
                  color='k', linestyle='--')
         ax6.set_ylabel("{Angular Velocity - $u_2$ [rad/s]}")
         ax6.yaxis.set_label_position("right")
         ax6.yaxis.tick_right()
-        ax6.legend(["X", "Y", "Z"])
+        ax6.legend(["Z"])
         ax6.set_ylim(-max_w * 1.3, max_w * 1.3)
         ax6.set_xlabel("Time [s]")
         ax6.grid()

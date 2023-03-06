@@ -284,11 +284,11 @@ class CorridorMPC(object):
         u = ca.MX.sym('u', self.Nu)
 
         # Prepare variables
-        p = x[0:3]
-        t = x[3:]
+        p = x[0:2]
+        t = x[2:]
 
-        pr = xr[0:3]
-        tr = xr[3:]
+        pr = xr[0:2]
+        tr = xr[2:]
 
         # Calculate errors
         ep = p - pr
