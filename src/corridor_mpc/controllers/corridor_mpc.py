@@ -170,7 +170,7 @@ class CorridorMPC(object):
             con_ineq.append(opt_var['x', self.Nt] - x_ref[self.Nt * self.Nx:])
             con_ineq_lb.append(self.tc_lb)
             con_ineq_ub.append(self.tc_ub)
-
+        
         # Equality constraints bounds are 0 (they are equality constraints),
         # -> Refer to CasADi documentation
         num_eq_con = ca.vertcat(*con_eq).size1()

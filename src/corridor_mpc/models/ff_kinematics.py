@@ -22,6 +22,7 @@ class FreeFlyerKinematics(object):
         # Model
         self.nonlinear_model = self.astrobee_dynamics
         self.model = None
+        # state is [x,y,th] so really no non-linearities
         self.n = 3
         self.m = 3
 

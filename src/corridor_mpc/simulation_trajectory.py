@@ -17,7 +17,8 @@ except ImportError:
 
 class EmbeddedSimEnvironment(object):
     def __init__(self, model, dynamics, cmpc, 
-                 noise=None, time=100.0, collect=True, animate=False):
+                 noise=None, time=100.0, collect=True, animate=False, 
+                 cbfs=None, trajectories=None):
         """
         Embedded simulation environment. Simulates the syste given
         dynamics and a control law, plots in matplotlib.
@@ -49,6 +50,9 @@ class EmbeddedSimEnvironment(object):
         self.using_trajectory_ref = False
         self.animate = animate
         self.collect = collect
+
+        self.cbfs = cbfs
+        self.trajs = trajectories
 
         # Plotting definitions
         self.plt_window = float("inf")  # running plot window [s]/float("inf")
@@ -89,8 +93,8 @@ class EmbeddedSimEnvironment(object):
                                                       u.reshape(self.Nu, 1))
             hp, hq = self.model.get_barrier_error_epsilon(x.reshape(self.Nx, 1),
                                                           ref.reshape(self.Nx, 1))
-            # hp_c, hq_c = 0, 0
-            # hp, hq = 0, 0
+            hp_c, hq_c = 0, 0
+            hp, hq = 0, 0
 
             # Prepare data for logging
             slv_time = np.append(slv_time,
@@ -220,7 +224,7 @@ class EmbeddedSimEnvironment(object):
         self.ax1.grid()
 
         self.ax2.clear()
-        self.ax2.plot(t[l_wnd:-1], y_vec[3, l_wnd:-1] - ref_vec[3, l_wnd:-1])
+        self.ax2.plot(t[l_wnd:-1], y_vec[2, l_wnd:-1] - ref_vec[2, l_wnd:-1])
         self.ax2.legend(["z"])
         self.ax2.set_ylabel("Attitude Error [rad]")
         self.ax2.grid()
@@ -234,7 +238,7 @@ class EmbeddedSimEnvironment(object):
         self.ax3.grid()
 
         self.ax4.clear()
-        self.ax4.plot(t[l_wnd:-1], u_vec[3, l_wnd:-1])
+        self.ax4.plot(t[l_wnd:-1], u_vec[2, l_wnd:-1])
         self.ax4.set_xlabel("Time [s]")
         self.ax4.set_ylabel("U2 [rad/s]")
         self.ax4.set_ylim(-0.06, 0.06)
@@ -364,7 +368,38 @@ class EmbeddedSimEnvironment(object):
         ax6.set_xlabel("Time [s]")
         ax6.grid()
 
-        fig1.tight_layout()
+        # fig1.tight_layout()
+        fig1.savefig("figures/error_barrier.png",dpi=500)
+
+
+
+
+        fig2 = plt.figure(figsize=(4.5 * scale, 3.0 * scale), dpi=80)
+
+        ax1 = fig2.add_subplot(121)  # Pos over time
+        ax2 = fig2.add_subplot(122)  # ground plot
+
+        # Position
+        ax1.clear()
+        ax1.plot(t,y_vec[0,:],'r')
+        ax1.plot(t,ref_vec[0,:],'r--')
+        ax1.plot(t,y_vec[1,:],'b')
+        ax1.plot(t,ref_vec[1,:],'b--')
+        ax1.legend([r"$x$", r"$x_{ref}$",r"$y$", r"$y_{ref}$"], loc="upper right")
+        ax1.set_ylabel("{Position [m]}")
+        ax6.set_xlabel("Time [s]")
+        ax1.grid()
+
+        ax2.clear()
+        ax2.plot(y_vec[0,:],y_vec[1,:],'r')
+        ax2.plot(ref_vec[0,:],ref_vec[1,:],'r--')
+        ax2.legend([r"$p$", r"$p_{ref}$"], loc="upper right")
+        ax2.set_xlabel("{x-position [m]}")
+        ax2.set_ylabel("{y-position [m]}")
+        ax2.grid()
+
+        fig2.savefig("figures/ground_plot.png",dpi=500)
+
 
     def prepare_animated_plots(self):
         """
