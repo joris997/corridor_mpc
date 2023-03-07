@@ -17,8 +17,7 @@ except ImportError:
 
 class EmbeddedSimEnvironment(object):
     def __init__(self, model, dynamics, cmpc, 
-                 noise=None, time=100.0, collect=True, animate=False, 
-                 cbfs=None, trajectories=None):
+                 noise=None, time=100.0, collect=True, animate=False):
         """
         Embedded simulation environment. Simulates the syste given
         dynamics and a control law, plots in matplotlib.
@@ -50,9 +49,6 @@ class EmbeddedSimEnvironment(object):
         self.using_trajectory_ref = False
         self.animate = animate
         self.collect = collect
-
-        self.cbfs = cbfs
-        self.trajs = trajectories
 
         # Plotting definitions
         self.plt_window = float("inf")  # running plot window [s]/float("inf")
@@ -371,11 +367,10 @@ class EmbeddedSimEnvironment(object):
         # fig1.tight_layout()
         fig1.savefig("figures/error_barrier.png",dpi=500)
 
-
-
-
+        # ---------------------------------------------------
+        #     Fourth Figure with Compact Representation
+        # ---------------------------------------------------
         fig2 = plt.figure(figsize=(4.5 * scale, 3.0 * scale), dpi=80)
-
         ax1 = fig2.add_subplot(121)  # Pos over time
         ax2 = fig2.add_subplot(122)  # ground plot
 

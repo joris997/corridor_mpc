@@ -30,8 +30,8 @@ class FreeFlyerKinematics(object):
         self.total_trajectory_time = None
 
         # Control bounds
-        self.max_v = 0.5
-        self.max_w = 0.2
+        self.max_v = 3.75 #0.5
+        self.max_w = 3.75 #0.2
         self.ulb = [-self.max_v, -self.max_v, -self.max_w]
         self.uub = [self.max_v, self.max_v, self.max_w]
 
@@ -196,6 +196,51 @@ class FreeFlyerKinematics(object):
         """
         u_r = np.repeat(self.constant_v_tracking, npoints, axis=1)
         return u_r
+    
+    def get_trajectory_waypoints(self, t0, npoints, trajs):
+        if t0 == 0.0:
+            print("Creating trajectory...", end="")
+            traj_points = int(self.trajectory_time / self.dt) + npoints
+            times = np.linspace(0,traj_points*self.dt,traj_points)
+
+            self.trajectory_set = np.empty((self.m,0))
+            self.velocity_set = np.empty((self.m,0))
+            for ti in times:
+                # find the index of the line we care about
+                tj = []
+                for idx,traj in reversed(list(enumerate(trajs))):
+                    if ti >= traj[0][0]:
+                        tj = traj
+                        break
+
+                # now interpolate the trajectory
+                t0 = tj[0][0]
+                tf = tj[0][1]
+                x0 = tj[0][2]
+                xf = tj[0][3]
+                x_ri = self.interpolate_state(ti,t0,tf,x0,xf).reshape((self.m,1))
+                x_ri_2 = self.interpolate_state(ti+self.dt,t0,tf,x0,xf).reshape((self.m,1))
+                v_ri = (x_ri_2 - x_ri)/self.dt
+                # v_ri = np.zeros((3,1))
+                self.trajectory_set = np.append(self.trajectory_set, x_ri, axis=1)
+                self.velocity_set = np.append(self.velocity_set, v_ri, axis=1)
+
+            x_r = self.trajectory_set[:, 0:npoints]
+            v_r = self.velocity_set[:, 0:npoints-1]
+            print(" Done")
+        else:
+            id_s = int(round(t0 / self.dt))
+            id_e = int(round(t0 / self.dt)) + npoints
+            x_r = self.trajectory_set[:, id_s:id_e]
+            v_r = self.velocity_set[:, id_s:id_e-1]
+
+        return x_r, v_r
+    
+    def interpolate_state(self,t,t0,tf,x0,xf):
+        x_r = np.zeros((self.m,))
+        for i in range(self.m):
+            x_r[i] = (1-(t-t0)/(tf-t0))*x0[i] + ((t-t0)/(tf-t0))*xf[i]
+        return x_r
 
     def set_trajectory(self, length, start):
         """

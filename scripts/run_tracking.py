@@ -6,6 +6,12 @@ from corridor_mpc.models.ff_kinematics import FreeFlyerKinematics
 from corridor_mpc.controllers.corridor_mpc import CorridorMPC
 from corridor_mpc.simulation_trajectory import EmbeddedSimEnvironment
 
+# Trajectory from Robust STL
+with open("mp_data/prob1_export.pkl",'rb') as f:
+    cbfs,lines = pickle.load(f)
+# cbfs = None
+# lines = None
+    
 # Sim and MPC Params
 SIM_TIME = 15.0
 # SIM_TIME = 0.1
@@ -24,11 +30,9 @@ ctl = CorridorMPC(model=abee,
                   Q=Q, R=R, P=P,
                   ulb=abee.ulb,
                   uub=abee.uub,
-                  set_zcbf=True)
-
-# Trajectory from Robust STL
-with open("mp_data/prob1_export.pkl",'rb') as f:
-    cbfs,lines = pickle.load(f)
+                  set_zcbf=True,
+                  cbfs=cbfs,
+                  trajs=lines)
 
 xr0 = np.zeros((3, 1))
 abee.set_trajectory(length=SIM_TIME, start=xr0)
@@ -37,10 +41,8 @@ sim_env_full = EmbeddedSimEnvironment(model=abee,
                                       cmpc=ctl,
                                       noise={"pos": 0.1, "att": 0.1},
                                       time=SIM_TIME, collect=True,
-                                      animate=False,
-                                      cbfs=cbfs,
-                                      trajectories=lines)
-                                      
+                                      animate=False)
+
 _, _, _, avg_ct = sim_env_full.run([0.0, 0.0, 0.0])
 
 print("Average computational cost:", avg_ct)

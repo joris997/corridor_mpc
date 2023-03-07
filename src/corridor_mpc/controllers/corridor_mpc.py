@@ -77,6 +77,17 @@ class CorridorMPC(object):
         self.set_options_dicts()
         if "use_jit" in kwargs:
             self.set_jit()
+
+        # Initialize barrier and trajectory variables
+        if "cbfs" in kwargs:
+            self.cbfs = kwargs["cbfs"]
+        else:
+            self.cbfs = None
+        if "trajs" in kwargs:
+            self.trajs = kwargs["trajs"]
+        else:
+            self.trajs = None
+
         self.set_cost_functions()
         self.test_cost_functions(Q, R, P)
         self.create_solver()
@@ -170,7 +181,7 @@ class CorridorMPC(object):
             con_ineq.append(opt_var['x', self.Nt] - x_ref[self.Nt * self.Nx:])
             con_ineq_lb.append(self.tc_lb)
             con_ineq_ub.append(self.tc_ub)
-        
+
         # Equality constraints bounds are 0 (they are equality constraints),
         # -> Refer to CasADi documentation
         num_eq_con = ca.vertcat(*con_eq).size1()
@@ -379,8 +390,14 @@ class CorridorMPC(object):
         :rtype: ca.DM
         """
         # Generate trajectory from t0 and x0
-        x_sp_vec = self.model.get_trajectory(t0, self.Nt + 1)
-        u_sp_vec = self.model.get_constant_u_sp(self.Nt)
+        if self.trajs is None:
+            x_sp_vec = self.model.get_trajectory(t0, self.Nt + 1)
+            u_sp_vec = self.model.get_constant_u_sp(self.Nt)
+        else:
+            x_sp_vec, u_sp_vec = self.model.get_trajectory_waypoints(t0, self.Nt+1, self.trajs)
+        
+        print("x_sp_vec: ", np.shape(x_sp_vec))
+        print("u_sp_vec:" , np.shape(u_sp_vec))
         ref = x_sp_vec[:, 0]
         x_sp = x_sp_vec.reshape(self.Nx * (self.Nt + 1), order='F')
         u_sp = u_sp_vec.reshape(self.Nu * self.Nt, order='F')
