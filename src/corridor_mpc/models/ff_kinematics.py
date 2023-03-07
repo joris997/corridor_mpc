@@ -7,7 +7,7 @@ import numpy as np
 
 
 class FreeFlyerKinematics(object):
-    def __init__(self, dt=None):
+    def __init__(self, dt=None, **kwargs):
         """
         Astrobee Robot kinematics class class.
 
@@ -43,7 +43,17 @@ class FreeFlyerKinematics(object):
         self.set_casadi_options()
         self.set_system_constants()
         self.set_dynamics()
-        self.set_barrier_functions()
+
+        # Initialize barrier and trajectory variables
+        if "cbfs" in kwargs:
+            self.cbfs = kwargs["cbfs"]
+        if "trajs" in kwargs:
+            self.trajs = kwargs["trajs"]
+
+        if self.cbfs is None:
+            self.set_barrier_functions()
+        else:
+            self.set_barrier_functions_waypoints()
 
     def set_casadi_options(self):
         """
@@ -310,7 +320,63 @@ class FreeFlyerKinematics(object):
         self.h2 = ca.Function('h2', [t, tr], [h2], self.fun_options)
         self.h2_ineq = ca.Function('h2_ineq', [t, tr, u], [h2_ineq], self.fun_options)
 
-    def get_barrier_value(self, x_t, x_r, u_t):
+    def set_barrier_functions_waypoints(self):
+        # Paper Translation barrier
+        time_var = ca.MX.sym("time", 1, 1)
+        u = ca.MX.sym("u", self.n, 1)
+        u1 = u[0:2]
+        u2 = u[2:]
+
+        # for now, just take the first barrier
+        tj = self.cbfs[0]
+        t0 = tj[0][0]
+        tf = tj[0][1]
+        x0 = tj[0][2]
+        xf = tj[0][3]
+        dt = tf-t0
+        eps = 0.05
+    
+        gamma = 15
+        time = -1/gamma * ca.log(ca.exp(-gamma*time_var) + np.exp(-gamma*tf))
+        time = ca.fmin(time_var,tf)
+
+        # Setup position barrier
+        eta_range = [ca.norm_2(x0[0:2]-xf[0:2]) + eps, eps]
+        eta = eta_range[0]*(1-(time-t0)/(dt)) + eta_range[1]*((time-t0)/(dt))
+        eta_dt = -eta_range[0]*(time/dt) + eta_range[1]*(time/dt)
+
+        p = ca.MX.sym("p", 2, 1)
+        pr = ca.MX.sym("pr", 2, 1)
+
+        get_h = eta**2 - ca.norm_2(p-xf[0:2])**2
+        get_dhdt = 2*eta * eta_dt
+        get_dhdx = -2*(p-xf[0:2]).T @ u1
+
+        h1 = get_h
+        h1_ineq = get_dhdt + get_dhdx + self.lambda_1 * h1 - self.rah_1
+        
+        self.h1 = ca.Function('h1', [time_var, p, pr], [h1], self.fun_options)
+        self.h1_ineq = ca.Function('h1_ineq', [time_var, p, pr, u], [h1_ineq], self.fun_options)
+
+        # Setup attitude barrier
+        eta_range = [ca.norm_2(x0[2:]-xf[2:]) + eps, eps]
+        eta = eta_range[0]*(1-(time-t0)/(dt)) + eta_range[1]*((time-t0)/(dt))
+        eta_dt = -eta_range[0]*(time/dt) + eta_range[1]*(time/dt)
+
+        p = ca.MX.sym("p", 1, 1)
+        pr = ca.MX.sym("pr", 1, 1)
+
+        get_h = eta**2 - ca.norm_2(p-xf[2:])**2
+        get_dhdt = 2*eta * eta_dt
+        get_dhdx = -2*(p-xf[2:]).T @ u2
+
+        h2 = get_h
+        h2_ineq = get_dhdt + get_dhdx + self.lambda_2 * h2 - self.rah_2
+
+        self.h2 = ca.Function('h2', [time_var, p, pr], [h2], self.fun_options)
+        self.h2_ineq = ca.Function('h2_ineq', [time_var, p, pr, u], [h2_ineq], self.fun_options)
+
+    def get_barrier_value(self, t0, x_t, x_r, u_t):
         """
         Helper function to get the barrier function values.
 
@@ -330,11 +396,19 @@ class FreeFlyerKinematics(object):
         tr = x_r[2:]
         u = u_t
 
-        # hp_ineq >= 0
-        h1_ineq = self.h1_ineq(p, pr, u)
+        if self.cbfs is None:
+            # hp_ineq >= 0
+            h1_ineq = self.h1_ineq(p, pr, u)
 
-        # hq_ineq >= 0
-        h2_ineq = self.h2_ineq(t, tr, u)
+            # hq_ineq >= 0
+            h2_ineq = self.h2_ineq(t, tr, u)
+        
+        else:
+            # hp_ineq >= 0
+            h1_ineq = self.h1_ineq(t0, p, pr, u)
+
+            # hq_ineq >= 0
+            h2_ineq = self.h2_ineq(t0, t, tr, u)
 
         return h1_ineq, h2_ineq
 

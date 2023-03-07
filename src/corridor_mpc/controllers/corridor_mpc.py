@@ -100,10 +100,11 @@ class CorridorMPC(object):
         build_solver_time = -time.time()
 
         # Starting state parameters - add slack here
+        t0 = ca.MX.sym('t_sym', 1)
         x0 = ca.MX.sym('x0', self.Nx)
         x_ref = ca.MX.sym('x_ref', self.Nx * (self.Nt + 1),)
         u_ref = ca.MX.sym('u_ref', self.Nu * self.Nt,)
-        param_s = ca.vertcat(x0, x_ref, u_ref)
+        param_s = ca.vertcat(t0, x0, x_ref, u_ref)
 
         # Create optimization variables
         opt_var = ctools.struct_symMX([(
@@ -159,7 +160,12 @@ class CorridorMPC(object):
 
             # ZCBF constraints
             if hasattr(self, "use_zcbf") and t == 0:
-                hp_ineq, hq_ineq = self.model.get_barrier_value(x_t, x_r, u_t)
+                print("x_t: ", x_t)
+                print("x_r: ", x_r)
+                print("u_t: ", u_t)
+                hp_ineq, hq_ineq = self.model.get_barrier_value(t0, x_t, x_r, u_t)
+                print(hp_ineq)
+                print(hq_ineq)
                 con_ineq.append(hp_ineq)
                 con_ineq_lb.append(0)
                 con_ineq_ub.append(ca.inf)
@@ -334,7 +340,7 @@ class CorridorMPC(object):
 
         return
 
-    def solve_mpc(self, x0, u0=None):
+    def solve_mpc(self, t0, x0, u0=None):
         """
         Solve the MPC problem
 
@@ -353,7 +359,7 @@ class CorridorMPC(object):
         self.optvar_init = self.opt_var(0)
         self.optvar_init['x', 0] = self.optvar_x0[0]
 
-        param = ca.vertcat(x0, self.x_sp, self.u_sp)
+        param = ca.vertcat(t0, x0, self.x_sp, self.u_sp)
         args = dict(x0=self.optvar_init,
                     lbx=self.optvar_lb,
                     ubx=self.optvar_ub,
@@ -396,14 +402,15 @@ class CorridorMPC(object):
         else:
             x_sp_vec, u_sp_vec = self.model.get_trajectory_waypoints(t0, self.Nt+1, self.trajs)
         
-        print("x_sp_vec: ", np.shape(x_sp_vec))
-        print("u_sp_vec:" , np.shape(u_sp_vec))
+        # print("x_sp_vec: ", np.shape(x_sp_vec))
+        # print("u_sp_vec:" , np.shape(u_sp_vec))
+
         ref = x_sp_vec[:, 0]
         x_sp = x_sp_vec.reshape(self.Nx * (self.Nt + 1), order='F')
         u_sp = u_sp_vec.reshape(self.Nu * self.Nt, order='F')
         self.set_reference(x_sp, u_sp)
 
-        x_pred, u_pred = self.solve_mpc(x0)
+        x_pred, u_pred = self.solve_mpc(t0,x0)
 
         return u_pred[0], ref, x_pred, x_sp_vec
 

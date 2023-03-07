@@ -77,14 +77,16 @@ class EmbeddedSimEnvironment(object):
             # Print iteration info:
             print("Simulator iteration: ", i, " / ", self.sim_loop_length, "    Simulation time: ", round(i * self.dt, 2))
             x = np.array([y_vec[:, -1]]).T
+            t0 = i*self.dt
 
             # Get control input and obtain next state
-            u, ref, pred_x, pred_ref = self.corridor_mpc.solve(x, i * self.dt)
+            u, ref, pred_x, pred_ref = self.corridor_mpc.solve(x, t0)
 
             # Convert data to numpy array and collect barrier values
             u = np.asarray(u).reshape(3, 1)
 
-            hp_c, hq_c = self.model.get_barrier_value(x.reshape(self.Nx, 1),
+            hp_c, hq_c = self.model.get_barrier_value(t0,
+                                                      x.reshape(self.Nx, 1),
                                                       ref.reshape(self.Nx, 1),
                                                       u.reshape(self.Nu, 1))
             hp, hq = self.model.get_barrier_error_epsilon(x.reshape(self.Nx, 1),

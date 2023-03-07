@@ -8,9 +8,9 @@ from corridor_mpc.simulation_trajectory import EmbeddedSimEnvironment
 
 # Trajectory from Robust STL
 with open("mp_data/prob1_export.pkl",'rb') as f:
-    cbfs,lines = pickle.load(f)
+    cbfs,trajs = pickle.load(f)
 # cbfs = None
-# lines = None
+# trajs = None
     
 # Sim and MPC Params
 SIM_TIME = 15.0
@@ -20,7 +20,7 @@ R = np.diag([50, 50, 30])
 P = Q * 100
 
 # Instantiante Model
-abee = FreeFlyerKinematics()
+abee = FreeFlyerKinematics(cbfs=cbfs)
 
 # Instantiate controller (to track a velocity)
 ctl = CorridorMPC(model=abee,
@@ -32,7 +32,7 @@ ctl = CorridorMPC(model=abee,
                   uub=abee.uub,
                   set_zcbf=True,
                   cbfs=cbfs,
-                  trajs=lines)
+                  trajs=trajs)
 
 xr0 = np.zeros((3, 1))
 abee.set_trajectory(length=SIM_TIME, start=xr0)
