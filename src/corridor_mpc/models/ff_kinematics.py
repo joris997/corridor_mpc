@@ -30,8 +30,8 @@ class FreeFlyerKinematics(object):
         self.total_trajectory_time = None
 
         # Control bounds
-        self.max_v = 3.75 #0.5
-        self.max_w = 3.75 #0.2
+        self.max_v = 4 #3.75 #0.5
+        self.max_w = 4 #3.75 #0.2
         self.ulb = [-self.max_v, -self.max_v, -self.max_w]
         self.uub = [self.max_v, self.max_v, self.max_w]
 
@@ -44,6 +44,13 @@ class FreeFlyerKinematics(object):
         self.set_system_constants()
         self.set_dynamics()
 
+        self.eta1 = []
+        self.h1 = []
+        self.h1_ineq = []
+        self.eta2 = []
+        self.h2 = []
+        self.h2_ineq = []
+
         # Initialize barrier and trajectory variables
         if "cbfs" in kwargs:
             self.cbfs = kwargs["cbfs"]
@@ -53,6 +60,7 @@ class FreeFlyerKinematics(object):
         if self.cbfs is None:
             self.set_barrier_functions()
         else:
+            self.ncbfs = len(self.cbfs)
             self.set_barrier_functions_waypoints()
 
     def set_casadi_options(self):
@@ -321,6 +329,8 @@ class FreeFlyerKinematics(object):
         self.h2_ineq = ca.Function('h2_ineq', [t, tr, u], [h2_ineq], self.fun_options)
 
     def set_barrier_functions_waypoints(self):
+        ### TODO: add Lipschitz and bounds of time-explicit eta
+        
         # Paper Translation barrier
         time_var = ca.MX.sym("time", 1, 1)
         u = ca.MX.sym("u", self.n, 1)
@@ -328,55 +338,61 @@ class FreeFlyerKinematics(object):
         u2 = u[2:]
 
         # for now, just take the first barrier
-        tj = self.cbfs[0]
-        t0 = tj[0][0]
-        tf = tj[0][1]
-        x0 = tj[0][2]
-        xf = tj[0][3]
-        dt = tf-t0
-        eps = 0.05
-    
-        gamma = 15
-        time = -1/gamma * ca.log(ca.exp(-gamma*time_var) + np.exp(-gamma*tf))
-        time = ca.fmin(time_var,tf)
-
-        # Setup position barrier
-        eta_range = [ca.norm_2(x0[0:2]-xf[0:2]) + eps, eps]
-        eta = eta_range[0]*(1-(time-t0)/(dt)) + eta_range[1]*((time-t0)/(dt))
-        eta_dt = -eta_range[0]*(time/dt) + eta_range[1]*(time/dt)
-
-        p = ca.MX.sym("p", 2, 1)
-        pr = ca.MX.sym("pr", 2, 1)
-
-        get_h = eta**2 - ca.norm_2(p-xf[0:2])**2
-        get_dhdt = 2*eta * eta_dt
-        get_dhdx = -2*(p-xf[0:2]).T @ u1
-
-        h1 = get_h
-        h1_ineq = get_dhdt + get_dhdx + self.lambda_1 * h1 - self.rah_1
+        for i in range(self.ncbfs):
+            tj = self.cbfs[i]
+            t0 = tj[0][0]
+            tf = tj[0][1]
+            x0 = tj[0][2]
+            xf = tj[0][3]
+            dt = tf-t0
+            eps = self.eps_p
+            # eps = 10
         
-        self.h1 = ca.Function('h1', [time_var, p, pr], [h1], self.fun_options)
-        self.h1_ineq = ca.Function('h1_ineq', [time_var, p, pr, u], [h1_ineq], self.fun_options)
+            gamma = 15
+            time = -1/gamma * ca.log(ca.exp(-gamma*time_var) + np.exp(-gamma*tf))
+            time = ca.fmin(time_var,tf)
 
-        # Setup attitude barrier
-        eta_range = [ca.norm_2(x0[2:]-xf[2:]) + eps, eps]
-        eta = eta_range[0]*(1-(time-t0)/(dt)) + eta_range[1]*((time-t0)/(dt))
-        eta_dt = -eta_range[0]*(time/dt) + eta_range[1]*(time/dt)
+            # Setup position barrier
+            eta_range = [ca.norm_2(x0[0:2]-xf[0:2]) + eps, eps]
+            eta = eta_range[0]*(1-(time-t0)/(dt)) + eta_range[1]*((time-t0)/(dt))
+            eta_dt = -eta_range[0]*(1/dt) + eta_range[1]*(1/dt)
 
-        p = ca.MX.sym("p", 1, 1)
-        pr = ca.MX.sym("pr", 1, 1)
+            p = ca.MX.sym("p", 2, 1)
+            pr = ca.MX.sym("pr", 2, 1)
 
-        get_h = eta**2 - ca.norm_2(p-xf[2:])**2
-        get_dhdt = 2*eta * eta_dt
-        get_dhdx = -2*(p-xf[2:]).T @ u2
+            get_h = eta**2 - ca.norm_2(p-xf[0:2])**2
+            get_dhdt = 2*eta * eta_dt
+            get_dhdx = -2*(p-xf[0:2]).T @ u1
 
-        h2 = get_h
-        h2_ineq = get_dhdt + get_dhdx + self.lambda_2 * h2 - self.rah_2
+            h1 = get_h
+            h1_ineq = get_dhdt + get_dhdx + self.lambda_1 * h1 - self.rah_1
+            
+            self.eta1.append( ca.Function('eta', [time_var], [eta], self.fun_options) )
+            self.h1.append( ca.Function('h1', [time_var, p, pr], [h1], self.fun_options) )
+            self.h1_ineq.append( ca.Function('h1_ineq', [time_var, p, pr, u], [h1_ineq], self.fun_options) )
 
-        self.h2 = ca.Function('h2', [time_var, p, pr], [h2], self.fun_options)
-        self.h2_ineq = ca.Function('h2_ineq', [time_var, p, pr, u], [h2_ineq], self.fun_options)
+            # Setup attitude barrier
+            eps = self.eps_t
 
-    def get_barrier_value(self, t0, x_t, x_r, u_t):
+            eta_range = [ca.norm_2(x0[2:]-xf[2:]) + eps, eps]
+            eta = eta_range[0]*(1-(time-t0)/(dt)) + eta_range[1]*((time-t0)/(dt))
+            eta_dt = -eta_range[0]*(1/dt) + eta_range[1]*(1/dt)
+
+            p = ca.MX.sym("p", 1, 1)
+            pr = ca.MX.sym("pr", 1, 1)
+
+            get_h = eta**2 - ca.norm_2(p-xf[2:])**2
+            get_dhdt = 2*eta * eta_dt
+            get_dhdx = -2*(p-xf[2:]).T @ u2
+
+            h2 = get_h
+            h2_ineq = get_dhdt + get_dhdx + self.lambda_2 * h2 - self.rah_2
+
+            self.eta2.append( ca.Function('eta', [time_var], [eta], self.fun_options) )
+            self.h2.append( ca.Function('h2', [time_var, p, pr], [h2], self.fun_options) )
+            self.h2_ineq.append( ca.Function('h2_ineq', [time_var, p, pr, u], [h2_ineq], self.fun_options) )
+
+    def get_barrier_constraint_value(self, t0, x_t, x_r, u_t, cbf_idx=0):
         """
         Helper function to get the barrier function values.
 
@@ -397,22 +413,21 @@ class FreeFlyerKinematics(object):
         u = u_t
 
         if self.cbfs is None:
+            # use the corridor CBF from Pedro
             # hp_ineq >= 0
             h1_ineq = self.h1_ineq(p, pr, u)
-
             # hq_ineq >= 0
             h2_ineq = self.h2_ineq(t, tr, u)
-        
         else:
+            # use the timed-waypoints CBFs from Joris
             # hp_ineq >= 0
-            h1_ineq = self.h1_ineq(t0, p, pr, u)
-
+            h1_ineq = self.h1_ineq[cbf_idx](t0, p, pr, u)
             # hq_ineq >= 0
-            h2_ineq = self.h2_ineq(t0, t, tr, u)
+            h2_ineq = self.h2_ineq[cbf_idx](t0, t, tr, u)
 
         return h1_ineq, h2_ineq
 
-    def get_barrier_error_epsilon(self, x_t, x_r):
+    def get_barrier_value(self, t0, x_t, x_r, cbf_idx=0):
         """
         Helper function to get the barrier function values.
 
@@ -430,9 +445,25 @@ class FreeFlyerKinematics(object):
         pr = x_r[0:2]
         tr = x_r[2:]
 
-        #    self.hp(p, pr, v, vr) - self.eps_p - self.eps_v
-        e1 = self.eps_p**2 - ca.norm_2(p - pr)**2
-        #    self.hq(q, qr, w, wr) - self.eps_q - self.eps_w
-        e2 = self.eps_t**2 - ca.norm_2(t - tr)**2
+        if self.cbfs is None:
+            # self.hp(p, pr, v, vr) - self.eps_p - self.eps_v
+            e1 = self.h1(p,pr)
+            # self.hq(q, qr, w, wr) - self.eps_q - self.eps_w
+            e2 = self.h2(p,pr)
+        else:
+            # self.hp(p, pr, v, vr) - self.eps_p - self.eps_v
+            e1 = self.h1[cbf_idx](t0,p,pr)
+            # self.hq(q, qr, w, wr) - self.eps_q - self.eps_w
+            e2 = self.h2[cbf_idx](t0,t,tr)
 
         return e1, e2
+
+    def get_epsilon_value(self, t0, cbf_idx=0):
+        if self.cbfs is None:
+            eps1 = self.eps_p
+            eps2 = self.eps_t
+        else:
+            eps1 = self.eta1[cbf_idx](t0)
+            eps2 = self.eta2[cbf_idx](t0)
+        
+        return eps1, eps2

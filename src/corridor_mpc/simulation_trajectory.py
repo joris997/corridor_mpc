@@ -67,7 +67,8 @@ class EmbeddedSimEnvironment(object):
         u_vec = np.array([[0, 0, 0]]).T
         slv_time = np.empty((0, 1))
         h1_h2_vec = np.empty((2, 0))
-        h1_h2_e_vec = np.empty((2, 0))
+        h1_h2_const_vec = np.empty((2, 0))
+        eps_vec = np.empty((2,0))
 
         # Start figure
         if self.animate is True:
@@ -78,6 +79,7 @@ class EmbeddedSimEnvironment(object):
             print("Simulator iteration: ", i, " / ", self.sim_loop_length, "    Simulation time: ", round(i * self.dt, 2))
             x = np.array([y_vec[:, -1]]).T
             t0 = i*self.dt
+            idx = self.corridor_mpc.get_idx_from_time(t0)
 
             # Get control input and obtain next state
             u, ref, pred_x, pred_ref = self.corridor_mpc.solve(x, t0)
@@ -85,25 +87,30 @@ class EmbeddedSimEnvironment(object):
             # Convert data to numpy array and collect barrier values
             u = np.asarray(u).reshape(3, 1)
 
-            hp_c, hq_c = self.model.get_barrier_value(t0,
-                                                      x.reshape(self.Nx, 1),
-                                                      ref.reshape(self.Nx, 1),
-                                                      u.reshape(self.Nu, 1))
-            hp, hq = self.model.get_barrier_error_epsilon(x.reshape(self.Nx, 1),
-                                                          ref.reshape(self.Nx, 1))
-            hp_c, hq_c = 0, 0
-            hp, hq = 0, 0
+            hp_c, hq_c = self.model.get_barrier_constraint_value(t0,
+                                                                 x.reshape(self.Nx, 1),
+                                                                 ref.reshape(self.Nx, 1),
+                                                                 u.reshape(self.Nu, 1),
+                                                                 cbf_idx=idx)
+            hp, hq = self.model.get_barrier_value(t0,
+                                                  x.reshape(self.Nx, 1),
+                                                  ref.reshape(self.Nx, 1),
+                                                  cbf_idx=idx)
+            eps_p, eps_t = self.model.get_epsilon_value(t0,
+                                                        cbf_idx=idx)
 
             # Prepare data for logging
             slv_time = np.append(slv_time,
                                  self.corridor_mpc.get_last_solve_time())
-            ref_vec = np.append(ref_vec, np.array([ref]).T, axis=1)
+            ref_vec = np.append(ref_vec, 
+                                np.array([ref]).T, axis=1)
             h1_h2_vec = np.append(h1_h2_vec,
-                                  np.array([[hp_c, hq_c]]).reshape(2, 1),
-                                  axis=1)
-            h1_h2_e_vec = np.append(h1_h2_e_vec,
-                                    np.array([[hp, hq]]).reshape(2, 1),
-                                    axis=1)
+                                  np.array([[hp, hq]]).reshape(2, 1), axis=1)
+            h1_h2_const_vec = np.append(h1_h2_const_vec,
+                                        np.array([[hp_c, hq_c]]).reshape(2, 1), axis=1)
+            eps_vec = np.append(eps_vec,
+                                np.array([[eps_p, eps_t]]).reshape(2, 1), axis=1)
+            
 
             # Log in data_structure
             data['pred_ref'] = pred_ref
@@ -112,8 +119,9 @@ class EmbeddedSimEnvironment(object):
             data['u_vec'] = u_vec
             data['ref_vec'] = ref_vec
             data['h1_h2_vec'] = h1_h2_vec
-            data['h1_h2_e_vec'] = h1_h2_e_vec
+            data['h1_h2_const_vec'] = h1_h2_const_vec
             data['t'] = t
+            data['eps_vec'] = eps_vec
 
             # Plot if plotting is required
             if self.animate is True:
@@ -256,7 +264,9 @@ class EmbeddedSimEnvironment(object):
         y_vec = data['y_vec']
         u_vec = data['u_vec']
         ref_vec = data['ref_vec']
-        h1_h2_e_vec = data['h1_h2_e_vec']
+        h1_h2_vec = data['h1_h2_vec']
+        h1_h2_const_vec = data['h1_h2_const_vec']
+        eps_vec = data['eps_vec']
         t = data['t']
 
         # Plot properties
@@ -269,11 +279,6 @@ class EmbeddedSimEnvironment(object):
         rc('legend', **{'fontsize': 14,
                         'handlelength': 2})
         rc('axes', titlesize='medium')
-
-        # Get desired error bounds
-        eps_p = self.model.eps_p
-
-        eps_t = self.model.eps_t
 
         max_v = self.model.uub[0]  # maximum velocity allowed (same on all axis)
         max_w = self.model.uub[2]  # maximum angular velocity allowed (Same on all axis)
@@ -297,46 +302,48 @@ class EmbeddedSimEnvironment(object):
 
         # Position error
         ax1.clear()
-        ax1.plot(t, np.linalg.norm(y_vec[0:2, :] - ref_vec[0:2, :], axis=0))
-        ax1.plot(t, np.ones((y_vec.shape[1],)) * (eps_p),
+        ax1.plot(t, np.linalg.norm(y_vec[0:2, :] - ref_vec[0:2, :], axis=0)**2)
+        ax1.plot(t, np.ones((y_vec.shape[1],)) * (eps_vec[0,:])**2,
                  t, np.zeros((y_vec.shape[1],)),
                  color='k', linestyle='--')
         # ax1.legend(["X", "Y", "Z"])
-        ax1.legend([r"$\| \tilde{e}_p \|$", r"$\varepsilon_p$"], loc="upper right")
+        ax1.legend([r"$\| \tilde{e}_p \|^2$", r"$\varepsilon_p^2$"], loc="upper right")
         ax1.set_ylabel("{Norm Position Error [m]}")
-        ax1.set_ylim(-0.3, eps_p * 1.3)
+        ax1.set_ylim(-0.3, max(eps_vec[0,:])**2 * 1.3)
         ax1.grid()
 
         # Attitude error
         ax2.clear()
-        ax2.plot(t, np.linalg.norm(y_vec[2:3, :] - ref_vec[2:3, :], axis=0))  # ,
-        #         t, y_vec[4, :] - ref_vec[4, :],
-        #         t, y_vec[5, :] - ref_vec[5, :])
-        ax2.plot(t, np.ones((y_vec.shape[1],)) * (eps_t),
+        ax2.plot(t, np.abs(y_vec[2, :] - ref_vec[2, :])**2)
+        ax2.plot(t, np.ones((y_vec.shape[1],)) * (eps_vec[1,:])**2,
                  t, np.zeros((y_vec.shape[1],)),
                  color='k', linestyle='--')
         # ax2.legend([r"$\phi$", r"$\varphi$", r"$\psi$"])
-        ax2.legend([r"$\| \tilde{e}_\theta \|$", r"$\varepsilon_\theta$"], loc="upper right")
+        ax2.legend([r"$\| \tilde{e}_\theta \|^2$", r"$\varepsilon_\theta^2$"], loc="upper right")
         ax2.set_ylabel("{Norm Attitude Error [rad]}")
         ax2.yaxis.set_label_position("right")
         ax2.yaxis.tick_right()
-        ax2.set_ylim(-0.1, eps_t * 1.35)
+        ax2.set_ylim(-0.1, max(eps_vec[1,:])**2 * 1.35)
         ax2.grid()
 
         # Pos barrier
         ax3.clear()
-        ax3.plot(t, h1_h2_e_vec[0, :])
+        ax3.plot(t, h1_h2_vec[0, :])
+        ax3.plot(t, h1_h2_const_vec[0, :])
+        ax3.legend([r"$h_1$",r"$\dot{h}_1 - \alpha(h_1) - v$"], loc="upper right")
         ax3.set_ylabel("{$h_1$ barrier value}")
-        ax3.set_ylim(-0.3, eps_p**2 + 0.3)
+        ax3.set_ylim(-0.3, max(eps_vec[0,:])**2 + 0.3)
         ax3.grid()
 
         # Att barrier
         ax4.clear()
-        ax4.plot(t, h1_h2_e_vec[1, :])
+        ax4.plot(t, h1_h2_vec[1, :])
+        ax4.plot(t, h1_h2_const_vec[1, :])
+        ax4.legend([r"$h_2$",r"$\dot{h}_2 - \alpha(h_2) - v$"], loc="upper right")
         ax4.set_ylabel("{$h_2$ barrier value}")
         ax4.yaxis.set_label_position("right")
         ax4.yaxis.tick_right()
-        ax4.set_ylim(-0.3, eps_t**2 + 0.3)
+        ax4.set_ylim(-0.3, max(eps_vec[1,:])**2 + 0.3)
         ax4.grid()
 
         # Plot linear velocity inputs

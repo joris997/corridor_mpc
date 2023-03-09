@@ -90,17 +90,21 @@ class CorridorMPC(object):
 
         self.set_cost_functions()
         self.test_cost_functions(Q, R, P)
-        self.create_solver()
+        self.create_solver(cbf_idx=0)
 
-    def create_solver(self):
+    def create_solver(self,cbf_idx=0):
         """
         Instantiate the solver object.
         """
+        verbose = False
+        if cbf_idx == 0:
+            verbose = True
 
         build_solver_time = -time.time()
 
         # Starting state parameters - add slack here
         t0 = ca.MX.sym('t_sym', 1)
+        # wp_idx = ca.MX.sym('wp_i', 1)
         x0 = ca.MX.sym('x0', self.Nx)
         x_ref = ca.MX.sym('x_ref', self.Nx * (self.Nt + 1),)
         u_ref = ca.MX.sym('u_ref', self.Nu * self.Nt,)
@@ -160,12 +164,15 @@ class CorridorMPC(object):
 
             # ZCBF constraints
             if hasattr(self, "use_zcbf") and t == 0:
-                print("x_t: ", x_t)
-                print("x_r: ", x_r)
-                print("u_t: ", u_t)
-                hp_ineq, hq_ineq = self.model.get_barrier_value(t0, x_t, x_r, u_t)
-                print(hp_ineq)
-                print(hq_ineq)
+                hp_ineq, hq_ineq = self.model.get_barrier_constraint_value(t0, x_t, x_r, u_t, cbf_idx=cbf_idx)
+
+                if verbose:
+                    print("x_t: ", x_t)
+                    print("x_r: ", x_r)
+                    print("u_t: ", u_t)
+                    print(hp_ineq)
+                    print(hq_ineq)
+
                 con_ineq.append(hp_ineq)
                 con_ineq_lb.append(0)
                 con_ineq_ub.append(ca.inf)
@@ -206,13 +213,14 @@ class CorridorMPC(object):
         self.solver = self.solver_dict[self.solver_type]
 
         build_solver_time += time.time()
-        print('\n________________________________________')
-        print('# Receding horizon length: %d ' % self.Nt)
-        print('# Time to build mpc solver: %f sec' % build_solver_time)
-        print('# Number of variables: %d' % self.num_var)
-        print('# Number of equality constraints: %d' % num_eq_con)
-        print('# Number of inequality constraints: %d' % num_ineq_con)
-        print('----------------------------------------')
+        if verbose:
+            print('\n________________________________________')
+            print('# Receding horizon length: %d ' % self.Nt)
+            print('# Time to build mpc solver: %f sec' % build_solver_time)
+            print('# Number of variables: %d' % self.num_var)
+            print('# Number of equality constraints: %d' % num_eq_con)
+            print('# Number of inequality constraints: %d' % num_ineq_con)
+            print('----------------------------------------')
         pass
 
     def set_options_dicts(self):
@@ -276,6 +284,11 @@ class CorridorMPC(object):
         self.sol_options_ipopt.update({
             "jit": True,
             "jit_options": {"flags": ["-O2"]}})
+
+    def get_idx_from_time(self,t0):
+        for idx,traj in reversed(list(enumerate(self.trajs))):
+            if t0 >= traj[0][0]:
+                return idx
 
     def set_solver_dictionaries(self, nlp):
 
@@ -404,6 +417,10 @@ class CorridorMPC(object):
         
         # print("x_sp_vec: ", np.shape(x_sp_vec))
         # print("u_sp_vec:" , np.shape(u_sp_vec))
+    
+        # based on the time, construct a new problem because we have new CBF functions
+        idx = self.get_idx_from_time(t0)
+        self.create_solver(cbf_idx=idx)
 
         ref = x_sp_vec[:, 0]
         x_sp = x_sp_vec.reshape(self.Nx * (self.Nt + 1), order='F')
