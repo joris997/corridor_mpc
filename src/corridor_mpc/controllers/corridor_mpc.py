@@ -131,6 +131,7 @@ class CorridorMPC(object):
         con_eq.append(opt_var['x', 0] - x0)
 
         # Generate MPC Problem
+        con_ineq_idx = 0
         for t in range(self.Nt):
             # Get variables
             x_t = opt_var['x', t]
@@ -145,20 +146,28 @@ class CorridorMPC(object):
             # Input constraints
             if hasattr(self, 'uub'):
                 con_ineq.append(u_t)
+                con_ineq_idx += u_t.shape[0]
+                if verbose: print("con_ineq_idx (uub): ", con_ineq_idx)
                 con_ineq_ub.append(self.uub)
                 con_ineq_lb.append(np.full((self.Nu,), -ca.inf))
             if hasattr(self, 'ulb'):
                 con_ineq.append(u_t)
+                con_ineq_idx += u_t.shape[0]
+                if verbose: print("con_ineq_idx (ulb): ", con_ineq_idx)
                 con_ineq_ub.append(np.full((self.Nu,), ca.inf))
                 con_ineq_lb.append(self.ulb)
 
             # State constraints
             if hasattr(self, 'xub'):
                 con_ineq.append(x_t)
+                con_ineq_idx += x_t.shape[0]
+                if verbose: print("con_ineq_idx (xub): ", con_ineq_idx)
                 con_ineq_ub.append(self.xub)
                 con_ineq_lb.append(np.full((self.Nx,), -ca.inf))
             if hasattr(self, 'xlb'):
                 con_ineq.append(x_t)
+                con_ineq_idx += x_t.shape[0]
+                if verbose: print("con_ineq_idx (xlb): ", con_ineq_idx)
                 con_ineq_ub.append(np.full((self.Nx,), ca.inf))
                 con_ineq_lb.append(self.xlb)
 
@@ -174,13 +183,19 @@ class CorridorMPC(object):
                     print(hq_ineq)
 
                 con_ineq.append(hp_ineq)
+                con_ineq_idx += hp_ineq.shape[0]
+                if verbose: print("con_ineq_idx (zcbf1): ", con_ineq_idx)
                 con_ineq_lb.append(0)
                 con_ineq_ub.append(ca.inf)
 
                 con_ineq.append(hq_ineq)
+                con_ineq_idx += hq_ineq.shape[0]
+                if verbose: print("con_ineq_idx (zcbf2): ", con_ineq_idx)
                 con_ineq_lb.append(0)
                 con_ineq_ub.append(ca.inf)
                 pass
+
+            if verbose: print("con_ineq_idx: ", con_ineq_idx)
 
             # Objective Function / Cost Function
             obj += self.running_cost(x_t, x_r, self.Q, u_t - u_r, self.R)
@@ -213,6 +228,13 @@ class CorridorMPC(object):
         self.solver = self.solver_dict[self.solver_type]
 
         build_solver_time += time.time()
+
+        if verbose: print(self.solver)
+        if verbose: print("con_ineq: ", ca.vertcat(*con_ineq))
+        if verbose:
+            for i in range(ca.vertcat(*con_ineq).shape[0]):
+                print("jac [",i,"]: ", ca.jacobian(ca.vertcat(*con_ineq)[i],opt_var))
+
         if verbose:
             print('\n________________________________________')
             print('# Receding horizon length: %d ' % self.Nt)
@@ -397,6 +419,21 @@ class CorridorMPC(object):
 
         return optvar['x'], optvar['u']
 
+    def get_reference(self, t0):
+        # Generate trajectory from t0 and x0
+        if self.trajs is None:
+            x_sp_vec = self.model.get_trajectory(t0, self.Nt + 1)
+            u_sp_vec = self.model.get_constant_u_sp(self.Nt)
+        else:
+            x_sp_vec, u_sp_vec = self.model.get_trajectory_waypoints(t0, self.Nt+1, self.trajs)
+        
+        ref = x_sp_vec[:, 0]
+        x_sp = x_sp_vec.reshape(self.Nx * (self.Nt + 1), order='F')
+        u_sp = u_sp_vec.reshape(self.Nu * self.Nt, order='F')
+        # print("x_sp_vec: ", np.shape(x_sp_vec))
+        # print("u_sp_vec:" , np.shape(u_sp_vec))
+        return x_sp_vec, u_sp_vec, ref, x_sp, u_sp
+
     def solve(self, x0, t0):
         """
         CMPC interface.
@@ -408,23 +445,12 @@ class CorridorMPC(object):
         :return: first control input
         :rtype: ca.DM
         """
-        # Generate trajectory from t0 and x0
-        if self.trajs is None:
-            x_sp_vec = self.model.get_trajectory(t0, self.Nt + 1)
-            u_sp_vec = self.model.get_constant_u_sp(self.Nt)
-        else:
-            x_sp_vec, u_sp_vec = self.model.get_trajectory_waypoints(t0, self.Nt+1, self.trajs)
-        
-        # print("x_sp_vec: ", np.shape(x_sp_vec))
-        # print("u_sp_vec:" , np.shape(u_sp_vec))
+        x_sp_vec, u_sp_vec, ref, x_sp, u_sp = self.get_reference(t0)
     
         # based on the time, construct a new problem because we have new CBF functions
         idx = self.get_idx_from_time(t0)
         self.create_solver(cbf_idx=idx)
-
-        ref = x_sp_vec[:, 0]
-        x_sp = x_sp_vec.reshape(self.Nx * (self.Nt + 1), order='F')
-        u_sp = u_sp_vec.reshape(self.Nu * self.Nt, order='F')
+        
         self.set_reference(x_sp, u_sp)
 
         x_pred, u_pred = self.solve_mpc(t0,x0)

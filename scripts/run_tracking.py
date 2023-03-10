@@ -9,7 +9,7 @@ from corridor_mpc.simulation_trajectory import EmbeddedSimEnvironment
 # Trajectory from Robust STL
 with open("mp_data/prob1_export.pkl",'rb') as f:
     cbfs,trajs = pickle.load(f)
-# cbfs = None
+cbfs = None
 # trajs = None
     
 # Sim and MPC Params
@@ -39,7 +39,7 @@ abee.set_trajectory(length=SIM_TIME, start=xr0)
 sim_env_full = EmbeddedSimEnvironment(model=abee,
                                       dynamics=abee.model,
                                       cmpc=ctl,
-                                      noise={"pos": 0.1, "att": 0.1},
+                                      noise={"pos": 0.0, "att": 0.0},
                                       time=SIM_TIME, collect=True,
                                       animate=False)
 

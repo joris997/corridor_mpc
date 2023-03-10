@@ -449,7 +449,7 @@ class FreeFlyerKinematics(object):
             # self.hp(p, pr, v, vr) - self.eps_p - self.eps_v
             e1 = self.h1(p,pr)
             # self.hq(q, qr, w, wr) - self.eps_q - self.eps_w
-            e2 = self.h2(p,pr)
+            e2 = self.h2(t,tr)
         else:
             # self.hp(p, pr, v, vr) - self.eps_p - self.eps_v
             e1 = self.h1[cbf_idx](t0,p,pr)

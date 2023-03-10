@@ -5,6 +5,7 @@ from __future__ import print_function
 import numpy as np
 import matplotlib as mpl
 import matplotlib.pyplot as plt
+import itertools
 
 from matplotlib import rc
 try:
@@ -81,11 +82,35 @@ class EmbeddedSimEnvironment(object):
             t0 = i*self.dt
             idx = self.corridor_mpc.get_idx_from_time(t0)
 
+            # before solving the MPC we want to see whether we can adhere to it
+            # a(x)u + b(x) >= 0 so an affine operation, we can just check the min max of u
+            _, _, ref, _, _ = self.corridor_mpc.get_reference(t0)
+            u_test = np.zeros((self.Nu,1))
+            combinations = list(itertools.product([-self.model.max_v,self.model.max_v], repeat=self.Nu))
+
+            for idx, combination in enumerate(combinations):
+                u_test = np.array(combination)
+                hp_c_test, hq_c_test = self.model.get_barrier_constraint_value(t0,
+                                                                               x.reshape(self.Nx,1),
+                                                                               ref.reshape(self.Nx,1),
+                                                                               u_test,
+                                                                               cbf_idx=idx)
+                if hp_c_test >= 0 and hq_c_test >= 0:
+                    print("--- barrier satisfiable ---")
+                    # print("--- u: ", u_test)
+                    # print("--- hp_c: ", hp_c_test, "   hq_c: ", hq_c_test)
+                    break
+                if idx == len(combinations)-1:
+                    print("--- barrier unsatisfiable ---")
+                    break
+
+
             # Get control input and obtain next state
             u, ref, pred_x, pred_ref = self.corridor_mpc.solve(x, t0)
 
             # Convert data to numpy array and collect barrier values
             u = np.asarray(u).reshape(3, 1)
+            # print("--- obtained u: ", u.T)
 
             hp_c, hq_c = self.model.get_barrier_constraint_value(t0,
                                                                  x.reshape(self.Nx, 1),
@@ -389,6 +414,8 @@ class EmbeddedSimEnvironment(object):
         ax1.plot(t,ref_vec[0,:],'r--')
         ax1.plot(t,y_vec[1,:],'b')
         ax1.plot(t,ref_vec[1,:],'b--')
+        # ax1.plot(t,self.model.trajectory_set[0,0:-30],'g')
+        # ax1.plot(t,self.model.trajectory_set[1,0:-30],'g--')
         ax1.legend([r"$x$", r"$x_{ref}$",r"$y$", r"$y_{ref}$"], loc="upper right")
         ax1.set_ylabel("{Position [m]}")
         ax6.set_xlabel("Time [s]")
